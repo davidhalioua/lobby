@@ -1,6 +1,6 @@
 {
   "name": "lobby-companion",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Pilote le client League of Legends depuis ton téléphone (réseau local).",
   "type": "module",
   "main": "src/index.js",
@@ -22,6 +22,7 @@
     "esbuild": "^0.28.2"
   },
   "lobby": {
-    "updateRepo": ""
+    "updateRepo": "",
+    "relayUrl": "https://lobby-relay.lobby-relay.workers.dev"
   }
 }
