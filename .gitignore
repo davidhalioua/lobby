@@ -1,0 +1,6 @@
+node_modules/
+companion/dist/
+lobby-debug.json
+opgg-probe.json
+relay/.dev.vars
+relay/.wrangler/

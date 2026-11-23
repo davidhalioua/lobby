@@ -1,0 +1,31 @@
+# Publie Lobby.exe quand on pousse un tag « vX.Y.Z » (ex. : git tag v0.3.1 && git push --tags).
+# Les Lobby.exe déjà installés chez tes potes se mettent à jour tout seuls dans les 6 h.
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: companion
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Version, dépôt de mise à jour et adresse du relais
+        env:
+          RELAY_URL: ${{ vars.LOBBY_RELAY_URL }}
+        run: |
+          npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+          node -e "const f='package.json',p=require('./'+f);p.lobby={...p.lobby,updateRepo:process.env.GITHUB_REPOSITORY,relayUrl:process.env.RELAY_URL||p.lobby?.relayUrl||''};require('fs').writeFileSync(f,JSON.stringify(p,null,2))"
+      - run: npm run build
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: companion/dist/Lobby.exe
+          generate_release_notes: true
