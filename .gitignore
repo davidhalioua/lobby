@@ -4,3 +4,4 @@ lobby-debug.json
 opgg-probe.json
 relay/.dev.vars
 relay/.wrangler/
+relay/shots/
