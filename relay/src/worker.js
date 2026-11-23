@@ -2,6 +2,7 @@
 // envoie les notifications « Partie trouvée ». Une « Room » (Durable Object) par PC.
 import { DurableObject } from 'cloudflare:workers';
 import { sendPush, vapidPublicKey } from './webpush.js';
+import { scout } from './scout.js';
 
 const TOKEN_RE = /^[a-f0-9]{32}$/;
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), {
@@ -35,6 +36,12 @@ export default {
       const ip = req.headers.get('CF-Connecting-IP') || 'inconnue';
       const token = await directory(env).redeem(String(code || ''), ip);
       return token ? json({ token }) : json({ error: 'Code incorrect ou expiré' }, 401);
+    }
+    if (p === '/api/scout' && req.method === 'POST') {
+      // Appelé par l'app PC quand une partie démarre (joueurs visibles à l'écran de chargement)
+      const body = await readJson(req);
+      if (!TOKEN_RE.test(body.t || '') || !(await (await roomFor(env, body.t)).isRegistered())) return json({}, 401);
+      try { return json({ players: await scout(env, body) }); } catch (e) { return json({ error: e.message }, 502); }
     }
     if (p === '/api/vapid') return json({ key: vapidPublicKey(JSON.parse(env.VAPID_PRIVATE)) });
     if ((p === '/api/subscribe' || p === '/api/cmd') && req.method === 'POST') {

@@ -56,6 +56,7 @@ const state = {
   lobby: null, queues: [], autoAcceptUntil: 0, relay: false,
   build: null, autoBuild: [],
   invitations: [], friends: [], prefs: { picks: {}, bans: [] },
+  scout: null,
 };
 
 // ---- Préférences enregistrées (import auto du build, par champion) ----
@@ -105,6 +106,40 @@ const refreshFriendsSoon = () => {
   clearTimeout(friendsTimer);
   friendsTimer = setTimeout(async () => { await refreshFriends(); broadcast(); }, 1500);
 };
+
+// ---- Scout : rang et forme des adversaires, dès l'écran de chargement (noms visibles à ce moment-là) ----
+let scoutedGame = null;
+async function scoutGame() {
+  const g = await safe(lcu.request('GET', '/lol-gameflow/v1/session'));
+  const gameId = g?.gameData?.gameId;
+  const teams = [g?.gameData?.teamOne || [], g?.gameData?.teamTwo || []];
+  if (!gameId || !teams[0].length || scoutedGame === gameId) return;
+  scoutedGame = gameId;
+  if (!relayUrl()) {
+    state.scout = { gameId, status: 'error', error: 'Le scout passe par le relais en ligne, pas encore configuré.' };
+    return broadcast();
+  }
+  const me = await safe(lcu.request('GET', '/lol-summoner/v1/current-summoner'));
+  const enemies = teams.find((t) => !t.some((p) => p.puuid === me?.puuid)) || teams[1];
+  const name = (p) => (p.gameName && p.tagLine ? `${p.gameName}#${p.tagLine}` : p.riotIdGameName ? `${p.riotIdGameName}#${p.riotIdTagLine || ''}` : '');
+  const players = enemies.map((p) => ({ puuid: p.puuid, championId: p.championId, name: name(p), team: 'enemy', position: p.selectedPosition || '' }));
+  state.scout = { gameId, status: 'loading', players };
+  broadcast();
+  try {
+    const region = (await safe(lcu.request('GET', '/riotclient/region-locale')))?.region;
+    const res = await fetch(`${relayUrl()}/api/scout`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ t: TOKEN, region, players }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `Relais ${res.status}`);
+    const pos = Object.fromEntries(players.map((p) => [p.puuid, p.position]));
+    if (scoutedGame === gameId) state.scout = { gameId, status: 'ready', players: body.players.map((p) => ({ ...p, position: pos[p.puuid] || '' })) };
+  } catch (e) {
+    if (scoutedGame === gameId) state.scout = { gameId, status: 'error', error: e.message, players };
+  }
+  broadcast();
+}
 
 // ---- Pré-sélection : survole tout seul ton favori quand vient ton tour (sans verrouiller) ----
 let prehovered = null;
@@ -271,6 +306,7 @@ async function syncAll() {
   state.lobby = simplifyLobby(await safe(lcu.request('GET', '/lol-lobby/v2/lobby')));
   await Promise.all([refreshInvitations(), refreshFriends()]);
   broadcast();
+  if (state.phase === 'InProgress') scoutGame(); // Lobby lancé en cours de partie
 }
 
 // ---- Partie trouvée : auto-accept ou notification ----
@@ -299,6 +335,8 @@ lcu.on('event', async ({ uri, eventType, data }) => {
     case '/lol-gameflow/v1/gameflow-phase':
       state.phase = data;
       if (data !== 'ChampSelect' && state.champSelect) { state.champSelect = null; state.build = null; buildFor = null; }
+      if (data === 'InProgress' || data === 'GameStart') setTimeout(scoutGame, 1500);
+      if (['None', 'Lobby', 'Matchmaking', 'ChampSelect'].includes(data)) { state.scout = null; scoutedGame = null; }
       if (data === 'ChampSelect') await Promise.all([refreshChampLists(), refreshPerks(), refreshMode()]);
       break;
     case '/lol-matchmaking/v1/ready-check':

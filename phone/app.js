@@ -246,6 +246,61 @@ function updatePrefs(slot, list) {
   send({ cmd: 'setPrefs', prefs });
 }
 
+const TIERS = { IRON: 'Fer', BRONZE: 'Bronze', SILVER: 'Argent', GOLD: 'Or', PLATINUM: 'Platine', EMERALD: 'Émeraude', DIAMOND: 'Diamant', MASTER: 'Maître', GRANDMASTER: 'Grand maître', CHALLENGER: 'Challenger' };
+const APEX = new Set(['MASTER', 'GRANDMASTER', 'CHALLENGER']);
+const kPts = (n) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
+
+function playerTags(p) {
+  const tags = [];
+  const pts = p.mastery?.points || 0;
+  if (p.onChampion >= 4 || pts >= 250000) tags.push(['warn', 'OTP']);
+  else if (!p.mastery || pts < 3000) tags.push(['good', 'Découvre le champion']);
+  if (p.streak?.count >= 3) tags.push(p.streak.win ? ['warn', `${p.streak.count} victoires d'affilée`] : ['good', `${p.streak.count} défaites d'affilée`]);
+  if (p.rank?.hot) tags.push(['warn', 'En feu']);
+  if (p.mastery) tags.push(['', `Maîtrise ${p.mastery.level} · ${kPts(pts)}`]);
+  if (p.kda != null) tags.push(['', `KDA ${p.kda}`]);
+  return tags;
+}
+
+function scoutSummary(players) {
+  const ready = players.filter((p) => !p.error);
+  const threat = ready.find((p) => p.onChampion >= 4 || (p.mastery?.points || 0) >= 250000) || ready.find((p) => p.streak?.win && p.streak.count >= 3);
+  const weak = ready.find((p) => p.streak && !p.streak.win && p.streak.count >= 3) || ready.find((p) => !p.mastery || p.mastery.points < 3000);
+  const who = (p) => `${champName(p.championId) || 'un adversaire'}${p.position ? ` (${POS[p.position.toLowerCase()] || p.position})` : ''}`;
+  const parts = [];
+  if (threat) parts.push(`méfie-toi de ${who(threat)}${threat.onChampion >= 4 || (threat.mastery?.points || 0) >= 250000 ? ', spécialiste de son champion' : ', en grande forme'}`);
+  if (weak && weak !== threat) parts.push(`${who(weak)} est la cible : ${weak.streak && !weak.streak.win && weak.streak.count >= 3 ? 'il enchaîne les défaites' : 'il découvre son champion'}`);
+  return parts.length ? `${parts.join(' ; ')}.` : '';
+}
+
+function scoutScreen(sc) {
+  if (sc.status === 'error' && !sc.players?.length) return `${header()}<div class="card"><div style="font-weight:600">Scout indisponible</div><div class="muted" style="font-size:13px;margin-top:4px">${esc(sc.error)}</div></div>`;
+  const cards = (sc.players || []).map((p) => {
+    const r = p.rank;
+    const rank = r ? `${TIERS[r.tier] || r.tier}${APEX.has(r.tier) ? '' : ` ${r.division}`} · ${r.lp} LP` : (sc.status === 'loading' ? '…' : 'Non classé');
+    const wr = r && r.wins + r.losses ? `${Math.round((r.wins / (r.wins + r.losses)) * 100)} % sur ${r.wins + r.losses}` : '';
+    const dots = (p.recent || []).map((g) => `<span class="dot-game ${g.win ? 'w' : 'l'}" title="${g.win ? 'Victoire' : 'Défaite'}"></span>`).join('');
+    const tags = sc.status === 'ready' && !p.error ? playerTags(p).map(([cls, t]) => `<span class="tag ${cls}">${esc(t)}</span>`).join('') : '';
+    return `<div class="card scout">
+      <div style="width:48px;flex-shrink:0">${img(champImg(p.championId), 'portrait', champName(p.championId))}</div>
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px">
+        <div class="row" style="align-items:flex-start"><div style="min-width:0">
+          <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(champName(p.championId))}</div>
+          <div class="muted lane" style="font-size:12px">${p.position ? laneIcon(p.position === 'MIDDLE' ? 'MIDDLE' : p.position, 12) : ''}${esc(p.name || 'Joueur')}</div></div>
+          <div style="text-align:right;flex-shrink:0"><div style="font-weight:600;font-size:14px">${esc(rank)}</div><div class="muted" style="font-size:12px">${esc(wr)}</div></div></div>
+        ${dots ? `<div class="dots" aria-label="5 dernières parties classées">${dots}</div>` : ''}
+        ${p.error ? `<div class="muted" style="font-size:12px">Infos indisponibles</div>` : tags ? `<div class="tags">${tags}</div>` : ''}
+      </div></div>`;
+  }).join('');
+  const summary = sc.status === 'ready' ? scoutSummary(sc.players) : '';
+  return `${header()}
+    <div><div class="label" style="color:var(--ban)">Partie en cours</div><h1 style="margin-top:4px">Adversaires</h1></div>
+    ${summary ? `<div class="card" style="background:#0F2A33;border-color:#1E4A57;font-size:14px;line-height:1.45"><strong style="color:var(--accent)">À surveiller :</strong> ${esc(summary)}</div>` : ''}
+    ${sc.status === 'loading' ? '<p class="muted" style="margin:0">Chargement des stats…</p>' : ''}
+    ${sc.status === 'error' ? `<p class="muted" style="margin:0">${esc(sc.error)}</p>` : ''}
+    <div class="list">${cards}</div>`;
+}
+
 function lobbyScreen(l) {
   const lanes = (slot) => `<div class="chips">${Object.entries(LANE).map(([k, v]) => {
     const picked = l.positions[slot] === k;
@@ -294,6 +349,7 @@ function screenIdle() {
     return `${header()}${invitesBanner()}<div class="center"><h1>Fin de partie</h1><p class="soft">GG ! On remet ça ?</p></div>
       <button class="btn primary" data-cmd="playAgain">Rejouer</button>`;
   }
+  if (p === 'InProgress' && state.scout) return scoutScreen(state.scout);
   const msg = { InProgress: 'Partie en cours', Reconnect: 'Reconnexion' }[p] || 'Patiente…';
   return `${header()}${invitesBanner()}<div class="center"><h1>${esc(msg)}</h1><p class="soft">Bonne game !</p></div>`;
 }

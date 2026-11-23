@@ -76,3 +76,13 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .invite { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-color: var(--ban); background: #2A1A14; }
 .chip.accent { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .option.row { justify-content: space-between; }
+
+.scout { display: flex; gap: 12px; align-items: flex-start; }
+.dots { display: flex; gap: 4px; }
+.dot-game { width: 18px; height: 6px; border-radius: 3px; background: #3A4555; }
+.dot-game.w { background: var(--ok); }
+.dot-game.l { background: #F87171; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { font-size: 12px; padding: 3px 8px; border-radius: 999px; background: var(--slot); color: #C9D1DC; }
+.tag.warn { background: #3A1D12; color: #FFB585; font-weight: 600; }
+.tag.good { background: #0F2A33; color: #8FE3F7; font-weight: 600; }

@@ -42,6 +42,7 @@ npm install
 npx wrangler login      # crée/ouvre ton compte Cloudflare gratuit dans le navigateur
 npm run deploy          # affiche l'adresse : https://lobby-relay.<toi>.workers.dev
 npm run vapid           # clés des notifications (une seule fois)
+npx wrangler secret put RIOT_API_KEY   # colle ta clé API Riot (scout des adversaires)
 ```
 
 Puis mets cette adresse dans `companion/package.json` → `"lobby": { "relayUrl": "https://…" }`
@@ -53,6 +54,7 @@ puis toucher « Activer les notifications ». Sur Android, ça marche aussi depu
 
 ## Ce qui marche
 
+- Scout des adversaires dès l'écran de chargement : rang, winrate, maîtrise, forme récente, « à surveiller » (nécessite le relais et une clé API Riot)
 - Lancer une partie : choix du mode, des postes, lancer / annuler la recherche
 - Partie trouvée : accepter / refuser avec compte à rebours, auto-accept minuté (15 min, 1 h, 3 h)
 - Sélection : bans et picks avec recherche, portraits officiels (Data Dragon)
