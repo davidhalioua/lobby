@@ -417,17 +417,32 @@ function pickTab(cs) {
       <div style="flex:1"><div style="font-weight:600">${esc(champName(id) || (p.isMe ? 'Toi' : '…'))}</div><div class="muted lane" style="font-size:13px">${laneIcon(p.position === 'middle' ? 'MIDDLE' : p.position === 'bottom' ? 'BOTTOM' : p.position === 'utility' ? 'UTILITY' : p.position, 14)}${esc(POS[p.position] || '')}${p.isMe ? ' · toi' : ''}</div></div></div>`;
   }).join('')}</div>`;
 
-  const a = cs.action;
+  // Ton tour (ban/pick), ou ton pick à venir : on peut annoncer son champion avant son tour
+  const a = chooserAction(cs);
   let chooser = '';
   if (a) {
     const isBan = a.type === 'ban';
+    const button = a.declare
+      ? `<p class="muted center" style="margin:0;font-size:14px">${a.championId ? `Tu annonces ${esc(champName(a.championId))} à ton équipe. Tu pourras verrouiller à ton tour.` : 'Choisis le champion que tu veux annoncer à ton équipe.'}</p>`
+      : `<button class="btn ${isBan ? 'ban' : 'primary'}" data-cmd="lock" ${a.championId ? '' : 'disabled'}>
+        ${a.championId ? `${isBan ? 'Bannir' : 'Verrouiller'} ${esc(champName(a.championId))}` : isBan ? 'Choisis un champion à bannir' : 'Choisis un champion'}</button>`;
     chooser = `<label class="search"><span class="muted" style="display:flex">${SEARCH_ICON}</span>
         <input id="search" type="search" placeholder="Rechercher un champion" value="${esc(ui.search)}" aria-label="Rechercher un champion" autocomplete="off"></label>
-      <div class="grid" id="grid">${gridHtml(isBan ? state.bannable : state.pickable, a)}</div>
-      <div class="sticky"><button class="btn ${isBan ? 'ban' : 'primary'}" data-cmd="lock" ${a.championId ? '' : 'disabled'}>
-        ${a.championId ? `${isBan ? 'Bannir' : 'Verrouiller'} ${esc(champName(a.championId))}` : 'Choisis un champion'}</button></div>`;
+      <div class="grid" id="grid">${gridHtml(chooserIds(a), a)}</div>
+      <div class="sticky">${button}</div>`;
   }
   return `${banRow}<div><div class="label" style="margin-bottom:8px">Ton équipe</div>${team}</div>${chooser}`;
+}
+
+function chooserAction(cs) {
+  if (cs.action) return cs.action;
+  if (cs.pick && !cs.bench) return { ...cs.pick, type: 'pick', declare: true };
+  return null;
+}
+// Si le client renvoie une liste vide (ça arrive selon la phase), on propose tous les champions
+function chooserIds(a) {
+  const ids = a.type === 'ban' ? state.bannable : state.pickable;
+  return ids?.length ? ids : Object.keys(dd.champs).map(Number);
 }
 
 function gridHtml(ids, a) {
@@ -452,7 +467,6 @@ function buildTab() {
   const pct = (x) => (x == null ? '—' : `${Math.round(x * 1000) / 10} %`);
   const row = (label, list) => (list.length ? `<div><div class="label" style="margin-bottom:8px">${label}</div>
       <div class="items">${list.map((it) => `<div class="item" title="${esc(it.name)}">${img(itemImg(it.id), 'portrait', it.name)}</div>`).join('')}</div></div>` : '');
-  const auto = state.autoBuild.includes(b.championId);
   const applied = b.applied?.length ? `Importé ✓ (${b.applied.join(', ')})` : 'Importer runes, sorts et objets';
   return `<div class="card" style="display:flex;align-items:center;gap:14px">
       <div style="width:56px;flex-shrink:0">${img(champImg(b.championId), 'portrait', champName(b.championId))}</div>
@@ -466,8 +480,7 @@ function buildTab() {
     ${row('Départ', d.items.starter)}${row('Objets principaux', [...d.items.core, ...d.items.boots])}${row('Fin de partie', d.items.late)}
     ${d.skills.order.length ? `<div><div class="label" style="margin-bottom:8px">Compétences${d.skills.priority.length ? ` · priorité ${esc(d.skills.priority.join(' > '))}` : ''}</div>
       <div class="skills">${d.skills.order.map((k) => `<span class="${k === 'R' ? 'r' : ''}">${esc(k)}</span>`).join('')}</div></div>` : ''}
-    <label class="card row" style="cursor:pointer"><span>Import auto pour ${esc(champName(b.championId))}</span>
-      <input type="checkbox" data-autobuild="${b.championId}" ${auto ? 'checked' : ''} style="width:22px;height:22px;accent-color:var(--accent)"></label>
+    <p class="muted" style="font-size:13px;margin:0">Rien n'est importé sans toi : si tu utilises Porofessor ou un autre outil, ignore simplement cet onglet.</p>
     <div class="sticky"><button class="btn primary" data-cmd="importBuild">${applied}</button></div>`;
 }
 
@@ -580,8 +593,8 @@ $app.addEventListener('input', (e) => {
   ui.search = e.target.value;
   const grid = document.getElementById('grid');
   if (grid && ui.prefsPick) { grid.innerHTML = prefsGrid(); return; }
-  const a = state?.champSelect?.action;
-  if (grid && a) grid.innerHTML = gridHtml(a.type === 'ban' ? state.bannable : state.pickable, a);
+  const a = state?.champSelect && chooserAction(state.champSelect);
+  if (grid && a) grid.innerHTML = gridHtml(chooserIds(a), a);
 });
 
 let toastTimer;

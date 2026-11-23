@@ -70,9 +70,25 @@ export default {
         start_url: TOKEN_RE.test(t) ? `/?t=${t}` : '/',
       }), { headers: { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'no-store' } });
     }
-    return env.ASSETS.fetch(req); // index.html, app.js, styles.css, sw.js
+    return phoneAsset(req, env, p); // index.html, app.js, styles.css, sw.js, icônes
   },
 };
+
+// L'app téléphone est lue directement sur GitHub (branche main) : chaque mise à jour poussée sur le dépôt
+// arrive sur les téléphones en quelques minutes, sans redéployer le relais.
+const TYPES = { html: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8', svg: 'image/svg+xml', png: 'image/png', ico: 'image/x-icon' };
+async function phoneAsset(req, env, p) {
+  if (!env.PHONE_SOURCE) return env.ASSETS.fetch(req);
+  const name = p === '/' ? 'index.html' : p.slice(1);
+  if (!/^[\w.-]+$/.test(name)) return new Response('Introuvable', { status: 404 });
+  const ext = name.split('.').pop();
+  if (!TYPES[ext]) return new Response('Introuvable', { status: 404 });
+  const res = await fetch(`${env.PHONE_SOURCE}/${name}`, { cf: { cacheTtl: 120, cacheEverything: true } });
+  if (!res.ok) return env.ASSETS.fetch(req); // GitHub injoignable : copie déployée avec le relais
+  return new Response(res.body, { headers: { 'Content-Type': TYPES[ext], 'Cache-Control': 'no-cache', ...(name === 'sw.js' ? { 'Service-Worker-Allowed': '/' } : {}) } });
+}
+
+
 
 // ---- Un PC et ses téléphones ----
 export class Room extends DurableObject {

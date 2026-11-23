@@ -22,3 +22,5 @@ new_sqlite_classes = ["Room", "Directory"]
 
 [vars]
 VAPID_SUBJECT = "mailto:lobby@example.com"
+# L'app téléphone est servie depuis le dépôt GitHub : pas besoin de redéployer à chaque mise à jour
+PHONE_SOURCE = "https://raw.githubusercontent.com/davidhalioua/lobby/main/phone"

@@ -64,7 +64,7 @@ function readConfig() { try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'ut
 function saveConfig(patch) {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify({ ...readConfig(), ...patch }), { mode: 0o600 });
 }
-state.autoBuild = readConfig().autoBuild || [];
+state.autoBuild = []; // import auto retiré en 0.7.2
 state.prefs = readConfig().prefs || state.prefs;
 
 // ---- Invitations reçues et amis en ligne ----
@@ -145,8 +145,9 @@ async function scoutGame() {
 let prehovered = null;
 async function maybePrehover() {
   const cs = state.champSelect;
-  const a = cs?.action;
-  if (!a || a.championId || prehovered === a.id) return;
+  // Ton tour (ban ou pick), sinon ton pick à venir pendant la phase de déclaration
+  const a = cs?.action || (cs?.timer.phase === 'PLANNING' && cs.pick ? { ...cs.pick, type: 'pick' } : null);
+  if (!a || a.championId || prehovered === `${a.id}:${a.type}`) return;
   const me = cs.myTeam.find((p) => p.isMe);
   const taken = new Set([...cs.bans.mine, ...cs.bans.theirs, ...cs.myTeam.filter((p) => !p.isMe).flatMap((p) => [p.championId, p.intentId]), ...cs.theirTeam.map((p) => p.championId)].filter(Boolean));
   const lane = (me?.position || '').toUpperCase();
@@ -158,7 +159,7 @@ async function maybePrehover() {
   const mates = new Set(cs.myTeam.filter((p) => !p.isMe).map((p) => p.intentId).filter(Boolean));
   if (!allowed.size) return; // listes pas encore chargées : on réessaiera au prochain événement
   const choice = wanted.find((id) => allowed.has(id) && !taken.has(id) && !(a.type === 'ban' && mates.has(id)));
-  prehovered = a.id;
+  prehovered = `${a.id}:${a.type}`;
   if (!choice) return;
   await safe(lcu.request('PATCH', `/lol-champ-select/v1/session/actions/${a.id}`, { championId: choice }));
 }
@@ -183,7 +184,7 @@ async function maybeLoadBuild() {
     const data = await fetchBuild({ championId, position: me.position, gameMode });
     if (buildFor !== key) return; // champion changé entre-temps
     state.build = { championId, status: 'ready', data, applied: [] };
-    if (state.autoBuild.includes(championId)) await importBuild();
+    // Import uniquement sur demande (bouton) : pas de conflit avec Porofessor ou d'autres outils
   } catch (e) {
     if (buildFor === key) state.build = { championId, status: 'error', error: e.message };
   }
@@ -241,6 +242,8 @@ function simplifySession(s) {
   const actions = s.actions.flat();
   const mine = actions.filter((a) => a.actorCellId === me);
   const current = mine.find((a) => a.isInProgress && !a.completed) || null;
+  // Mon pick à venir : permet d'annoncer son champion pendant la phase de déclaration, avant son tour
+  const nextPick = mine.find((a) => a.type === 'pick' && !a.completed) || null;
   const bans = actions.filter((a) => a.type === 'ban' && a.completed && a.championId);
   return {
     myCellId: me,
@@ -256,6 +259,7 @@ function simplifySession(s) {
       theirs: bans.filter((a) => !myCells.has(a.actorCellId)).map((a) => a.championId),
     },
     action: current && { id: current.id, type: current.type, championId: current.championId || 0 },
+    pick: nextPick && { id: nextPick.id, championId: nextPick.championId || 0 },
     // ARAM, ARAM du chaos… : champion aléatoire, banc partagé et relances
     bench: s.benchEnabled ? (s.benchChampions || []).map((b) => b.championId ?? b) : null,
     rerolls: s.allowRerolling ? (s.rerollsRemaining ?? 0) : null,
@@ -263,6 +267,7 @@ function simplifySession(s) {
 }
 
 
+let listsKey = null;
 async function refreshChampLists() {
   const [pick, ban] = await Promise.all([
     safe(lcu.request('GET', '/lol-champ-select/v1/pickable-champion-ids')),
@@ -352,6 +357,11 @@ lcu.on('event', async ({ uri, eventType, data }) => {
     case '/lol-champ-select/v1/session':
       state.champSelect = deleted ? null : simplifySession(data);
       debugDump(deleted ? null : data);
+      if (state.champSelect) {
+        // Les listes de champions bannissables/jouables changent selon la phase : on les recharge à chaque étape
+        const key = `${state.champSelect.timer.phase}:${state.champSelect.action?.id ?? ''}`;
+        if (key !== listsKey) { listsKey = key; await refreshChampLists(); }
+      } else listsKey = null;
       maybeLoadBuild();
       maybePrehover();
       break;
@@ -375,9 +385,11 @@ async function handle(cmd) {
   switch (cmd.cmd) {
     case 'accept': return lcu.request('POST', '/lol-matchmaking/v1/ready-check/accept');
     case 'decline': return lcu.request('POST', '/lol-matchmaking/v1/ready-check/decline');
-    case 'select': // survol (pick) ou sélection du ban, sans verrouiller
-      if (!action) throw new Error("Ce n'est pas ton tour");
-      return lcu.request('PATCH', `/lol-champ-select/v1/session/actions/${action.id}`, { championId: Number(cmd.championId) });
+    case 'select': { // survol, ban sélectionné ou champion annoncé, sans jamais verrouiller
+      const target = action || state.champSelect?.pick;
+      if (!target) throw new Error("Ce n'est pas ton tour");
+      return lcu.request('PATCH', `/lol-champ-select/v1/session/actions/${target.id}`, { championId: Number(cmd.championId) });
+    }
     case 'lock':
       if (!action?.championId) throw new Error("Choisis d'abord un champion");
       await lcu.request('POST', `/lol-champ-select/v1/session/actions/${action.id}/complete`);
