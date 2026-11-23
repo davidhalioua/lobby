@@ -27,8 +27,8 @@ npm run build      # fabrique dist/Lobby.exe
 
 ### Publier une mise à jour
 
-Avec le dépôt sur GitHub, pousse un tag : `git tag v0.3.1` puis `git push --tags`.
-GitHub Actions construit `Lobby.exe` et crée la release ; les Lobby installés se mettent à jour
+Change `"version"` dans `companion/package.json` (ex. `0.6.1`) et pousse sur `main`.
+GitHub Actions construit `Lobby.exe`, crée le tag et la release ; les Lobby installés se mettent à jour
 dans les 6 heures (jamais pendant une file ou une sélection).
 
 ## Le relais en ligne (une seule fois, pour toute la bande)
