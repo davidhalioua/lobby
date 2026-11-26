@@ -299,7 +299,17 @@ function debugDump(session) {
   fs.writeFileSync('lobby-debug.json', JSON.stringify({ mode: state.mode, session }, null, 2));
 }
 
+// Les anciennes versions créaient des pages « Lobby · … » qui prenaient la place de Porofessor : on les retire
+async function cleanupLobbyPages() {
+  const pages = (await safe(lcu.request('GET', '/lol-perks/v1/pages'))) || [];
+  for (const p of pages.filter((x) => x.isEditable && /^Lobby · /.test(x.name || ''))) {
+    await safe(lcu.request('DELETE', `/lol-perks/v1/pages/${p.id}`));
+    console.log(`Page de runes « ${p.name} » supprimée`);
+  }
+}
+
 async function syncAll() {
+  await cleanupLobbyPages();
   state.phase = (await safe(lcu.request('GET', '/lol-gameflow/v1/gameflow-phase'))) || 'None';
   state.readyCheck = await safe(lcu.request('GET', '/lol-matchmaking/v1/ready-check'));
   state.queue = await safe(lcu.request('GET', '/lol-matchmaking/v1/search'));

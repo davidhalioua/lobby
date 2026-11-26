@@ -1,6 +1,6 @@
 {
   "name": "lobby-companion",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Pilote le client League of Legends depuis ton téléphone (réseau local).",
   "type": "module",
   "main": "src/index.js",

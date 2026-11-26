@@ -84,22 +84,14 @@ export async function fetchBuild({ championId, position, gameMode }) {
 export async function applyBuild(lcu, build, { championName, currentSpells }) {
   const done = [];
 
-  // 1. Page de runes « Lobby » (remplace la précédente, ou la page actuelle si le quota est plein)
-  const pages = (await lcu.request('GET', '/lol-perks/v1/pages')) || [];
-  const page = {
-    name: `Lobby · ${championName}`.slice(0, 25), primaryStyleId: build.runes.primaryStyleId,
-    subStyleId: build.runes.subStyleId, selectedPerkIds: build.runes.perkIds, current: true,
-  };
-  for (const p of pages.filter((x) => x.isEditable && x.name?.startsWith('Lobby'))) {
-    await lcu.request('DELETE', `/lol-perks/v1/pages/${p.id}`).catch(() => {});
-  }
-  try {
-    await lcu.request('POST', '/lol-perks/v1/pages', page);
-  } catch {
-    const current = await lcu.request('GET', '/lol-perks/v1/currentpage').catch(() => null);
-    if (!current?.isEditable) throw new Error('Plus de place pour une page de runes');
-    await lcu.request('PUT', `/lol-perks/v1/pages/${current.id}`, { ...page, id: current.id });
-  }
+  // 1. Runes : on réécrit la page actuelle au lieu d'en créer une nouvelle,
+  //    pour ne jamais occuper une place de page (sinon Porofessor & co n'ont plus de place)
+  const current = await lcu.request('GET', '/lol-perks/v1/currentpage').catch(() => null);
+  if (!current?.isEditable) throw new Error('Sélectionne une de tes pages de runes modifiables, puis réessaie');
+  await lcu.request('PUT', `/lol-perks/v1/pages/${current.id}`, {
+    ...current, primaryStyleId: build.runes.primaryStyleId, subStyleId: build.runes.subStyleId,
+    selectedPerkIds: build.runes.perkIds, current: true,
+  });
   done.push('runes');
 
   // 2. Sorts (on garde Flash sur la touche où tu l'as d'habitude)
